@@ -36,23 +36,33 @@ def cyk_parser(kalimat, grammar):
                                 }
     return table, words
 
-def get_text_tree(table, words, row, col, symbol, level=0):
-    """Menghasilkan struktur pohon dalam bentuk teks (indentasi)"""
-    indent = "&nbsp;" * (level * 8)
+def get_text_tree(table, words, row, col, symbol, prefix=""):
+    """
+    Menghasilkan parse tree dalam bentuk teks murni (monospace),
+    cocok untuk ditampilkan dengan st.code()
+    """
     node_data = table[row][col].get(symbol)
-    
-    # Jika terminal (kata asli)
+
+    # Terminal (kata asli)
     if isinstance(node_data, str):
-        return f"{indent}└── **{symbol}** : <span style='color:blue'>{node_data}</span><br>"
-    
-    # Jika non-terminal (punya cabang)
+        return f"{prefix}└── {symbol} : {node_data}\n"
+
+    # Non-terminal (punya cabang)
     left = node_data["left"]
     right = node_data["right"]
-    
-    res = f"{indent}├── **{symbol}**<br>"
-    res += get_text_tree(table, words, left["row"], left["col"], left["sym"], level + 1)
-    res += get_text_tree(table, words, right["row"], right["col"], right["sym"], level + 1)
-    return res
+
+    result = f"{prefix}├── {symbol}\n"
+    result += get_text_tree(
+        table, words,
+        left["row"], left["col"], left["sym"],
+        prefix + "│   "
+    )
+    result += get_text_tree(
+        table, words,
+        right["row"], right["col"], right["sym"],
+        prefix + "    "
+    )
+    return result
 
 # ==========================================
 # 2. DATASET & RULE CFG
@@ -109,8 +119,9 @@ if input_kalimat:
         # Penjelasan 
         with st.container():
             st.write("Struktur Pohon (Parse Tree)")
-            tree_html = get_text_tree(tabel, kata, n-1, 0, "K")
-            st.markdown(f"<div style='background-color: #f0f2f6; padding: 20px; border-radius: 10px; font-family: monospace;'>{tree_html}</div>", unsafe_allow_html=True)
+            tree_text = get_text_tree(tabel, kata, n-1, 0, "K")
+            st.code(tree_text, language="text")
+
 
         with st.expander("Lihat Detail Proses (Tabel CYK)"):
             # Membuat tampilan tabel matrix yang lebih cantik
