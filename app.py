@@ -16,7 +16,9 @@ def cyk_parser(kalimat, grammar):
         for lhs, rhs_list in grammar.items():
             for rhs in rhs_list:
                 if len(rhs) == 1 and rhs[0] == word:
-                    table[0][i][lhs] = word 
+                    table[0][i][lhs] = word
+                    apply_unit_productions(table, grammar, 0, i)
+
 
     # Langkah 2: Sintaksis (Gabungkan Frasa)
     for j in range(1, n): 
@@ -34,36 +36,75 @@ def cyk_parser(kalimat, grammar):
                                     "left": {"sym": rhs[0], "row": k, "col": i},
                                     "right": {"sym": rhs[1], "row": j - k - 1, "col": i + k + 1}
                                 }
+                                apply_unit_productions(table, grammar, j, i)
     return table, words
 
-def get_text_tree(table, words, row, col, symbol, level=0):
-    """Menghasilkan struktur pohon dalam bentuk teks (indentasi)"""
-    indent = "&nbsp;" * (level * 8)
+def apply_unit_productions(table, grammar, row, col):
+    changed = True
+    while changed:
+        changed = False
+        current_symbols = list(table[row][col].keys())
+
+        for lhs, rhs_list in grammar.items():
+            for rhs in rhs_list:
+                # menangani A → B
+                if len(rhs) == 1 and rhs[0] in current_symbols:
+                    if lhs not in table[row][col]:
+                        table[row][col][lhs] = {
+                            "unit": rhs[0]
+                        }
+                        changed = True
+
+def get_text_tree(table, words, row, col, symbol, prefix=""):
+    """
+    Menghasilkan parse tree dalam bentuk teks murni (monospace),
+    cocok untuk ditampilkan dengan st.code()
+    """
     node_data = table[row][col].get(symbol)
-    
-    # Jika terminal (kata asli)
+
+    if isinstance(node_data, dict) and "unit" in node_data:
+        return (
+            f"{prefix}└── {symbol}\n"
+            + get_text_tree(
+                table, words,
+                row, col,
+                node_data["unit"],
+                prefix + "    "
+            )
+        )
+
+    # Terminal (kata asli)
     if isinstance(node_data, str):
-        return f"{indent}└── **{symbol}** : <span style='color:blue'>{node_data}</span><br>"
-    
-    # Jika non-terminal (punya cabang)
+        return f"{prefix}└── {symbol} : {node_data}\n"
+
+    # Non-terminal (punya cabang)
     left = node_data["left"]
     right = node_data["right"]
-    
-    res = f"{indent}├── **{symbol}**<br>"
-    res += get_text_tree(table, words, left["row"], left["col"], left["sym"], level + 1)
-    res += get_text_tree(table, words, right["row"], right["col"], right["sym"], level + 1)
-    return res
+
+    result = f"{prefix}├── {symbol}\n"
+    result += get_text_tree(
+        table, words,
+        left["row"], left["col"], left["sym"],
+        prefix + "│   "
+    )
+    result += get_text_tree(
+        table, words,
+        right["row"], right["col"], right["sym"],
+        prefix + "    "
+    )
+    return result
 
 # ==========================================
 # 2. DATASET & RULE CFG
 # ==========================================
 
 # Dataset 
-nouns = "kamar udeng kelase natahe batare jalerne tunangan buku titine ujan semeng pekene sanja meja kelas rurunge setra denpasar peteng tongose paruman lumure kopi semengan umah pekak pondokan aplikasi pamalajahan aksara bali pot bungan pucuk kolam budidaya be koi gurune teteladanan margi kendaraan cuaca aktivitas entasin plalianan bahasa anak smp pitaken kasut jejaitan otonan luh putu desa penglu kwaca limane lutung objek wisata wewidangan lingsir sandal ajengan gegaenan sari sapu pabersihan sekolahane madingehan munyin suling i ketut garing bale sandat dadong salak gula pasir meme peken puskesmas corak batik pameliang bapa gianyar sastra kandang bucu margine mejane siswa".split()
-adjectives = "cenik mael bersih tis belig lantang jegeg tebel dueg bales rame daki sepi nyeh linggah kiap cupit kedas luung ning becik ageng aluh cocok rimbit bedik iing jaen jangih miik manis pantes tegeh".split()
+nouns = "kamar udeng kelase natahe batare jalerne tunangan buku titine ujan semeng pekene sanja meja kelas rurunge setra denpasar peteng tongose paruman lumure kopi semengan umah pekak pondokan aplikasi pamalajahan aksara bali pot bungan pucuk kolam budidaya be koi gurune teteladanan margi kendaraan cuaca aktivitas entasin plalianan bahasa anak smp pitaken kasut jejaitan otonan luh putu desa penglu kwaca limane lutung objek wisata wewidangan lingsir sandal ajengan gegaenan sari sapu pabersihan sekolahane madingehan munyin suling i ketut garing bale sandat dadong salak gula pasir meme peken puskesmas corak batik pameliang bapa gianyar sastra kandang bucu margine mejane siswa puspanjali kadek ayu pamentasan tari dharma acara".split()
+adjectives = "cenik mael bersih tis belig lantang jegeg tebel dueg bales rame daki sepi nyeh linggah kiap cupit kedas luung ning becik ageng aluh cocok rimbit bedik iing jaen jangih miik manis pantes tegeh lemuh".split()
 adverbs = "sajan bes gati paling kuang pisan ngangsan ngalub nenten tuni dibi semengan mangkin pedidi".split()
 determiners = "ento tiang adi ene puniki punika i".split()
 prepositions = "di ke rikala anggo anggon nuju antuk dibi ring tuni uli".split()
+pronouns = "ia iraga".split()
 
 bali_grammar = {
     "K": [["P", "S"], ["P", "X1"], ["P", "X2"], ["P", "X3"], ["P", "X4"], ["P", "X5"]],
@@ -74,15 +115,16 @@ bali_grammar = {
     "X5": [["S", "X6"]],
     "X6": [["Pel", "Ket"]],
     "P": [["Adj", "Adv"], ["Adv", "Adj"]] + [[a] for a in adjectives],
-    "S": [["NP", "Noun"], ["Noun", "Det"], ["Det", "Noun"], ["NP", "Det"], ["Noun", "Adj"], ["Noun", "Adv"]],
+    "S": [["Noun"], ["NP"], ["Noun", "Noun"], ["NP", "Noun"], ["Noun", "Det"], ["Det", "Noun"], ["NP", "Det"], ["Noun", "Adj"], ["Noun", "Adv"], ["Pron"]],
     "Pel": [["Det", "Noun"], ["Noun", "Adj"], ["Noun", "Adv"], ["Prep", "NP"]],
     "Ket": [["Prep", "NP"], ["Adv", "Noun"]],
-    "NP": [["NP", "Noun"], ["Noun", "Det"], ["Det", "Noun"], ["NP", "Det"], ["Noun", "Adj"], ["Noun", "Adv"]],
+    "NP": [["Noun"], ["Noun", "Noun"], ["NP", "Noun"], ["Noun", "NP"], ["Noun", "Det"], ["Det", "Noun"], ["NP", "Det"], ["Noun", "Adj"], ["Noun", "Adv"]],
     "Prep": [[p] for p in prepositions],
     "Noun": [[n] for n in nouns],
     "Adj": [[a] for a in adjectives],
     "Adv": [[av] for av in adverbs],
-    "Det": [[d] for d in determiners]
+    "Det": [[d] for d in determiners],
+    "Pron": [[pron] for pron in pronouns]
 }
 
 # ==========================================
@@ -91,7 +133,7 @@ bali_grammar = {
 
 st.set_page_config(page_title="BaliParser Lite", page_icon="📝")
 
-st.title("Program Parsing Kalimat Bahasa Bali")
+st.title("Pengecekan Kalimat Bahasa Bali")
 st.subheader("Pengecekan Kalimat Predikat Frasa Adjektiva")
 
 input_kalimat = st.text_input("Masukkan Kalimat Bahasa Bali:", placeholder="Contoh: jaen sajan kopi puniki")
@@ -109,8 +151,9 @@ if input_kalimat:
         # Penjelasan 
         with st.container():
             st.write("Struktur Pohon (Parse Tree)")
-            tree_html = get_text_tree(tabel, kata, n-1, 0, "K")
-            st.markdown(f"<div style='background-color: #f0f2f6; padding: 20px; border-radius: 10px; font-family: monospace;'>{tree_html}</div>", unsafe_allow_html=True)
+            tree_text = get_text_tree(tabel, kata, n-1, 0, "K")
+            st.code(tree_text, language="text")
+
 
         with st.expander("Lihat Detail Proses (Tabel CYK)"):
             # Membuat tampilan tabel matrix yang lebih cantik
@@ -133,7 +176,7 @@ if input_kalimat:
         st.info("Saran: Cek apakah kata sudah masuk dataset atau pastikan pola adalah Predikat di awal.")
 
 # Sidebar Informasi
-with st.sidebar:
+with st.sidebar: 
     st.markdown("### Statistik Dataset")
     st.write(f"**Noun:** {len(nouns)} kata")
     st.write(f"**Adj:** {len(adjectives)} kata")
